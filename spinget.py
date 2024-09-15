@@ -3,16 +3,12 @@
 # usage:
 #
 #  spinget.py 11/20/2021 10:00 1
-#     capture 1 hour show starting at 10:00pm on November 20, 2021.
-#
-# Requires python3 and:
-#   - requests `pip install requests`
-#   - m3u8 `pip instrall m3u8`
+#     capture 1 hour show starting at 10:00am on November 20, 2021.
 #
 # Requires ffmpeg
 #
 # version 2.1, by mathias for WXOX
-
+# version 2.2, by Mason Daugherty for WBOR
 
 import argparse
 from datetime import datetime, date, time, timezone, timedelta
@@ -23,15 +19,15 @@ import sys
 import m3u8
 import requests
 
-
-
-INDEXURL="https://ark2.spinitron.com/ark2/WXOX-{0}/index.m3u8" # pass in UTC timestamp
+INDEXURL = (
+    "https://ark3.spinitron.com/ark2/WBOR-{0}/index.m3u8"  # pass in a UTC timestamp
+)
 
 
 # Pass (segment_number, segment_uri), returns a unique filename.
 def segtofile(n, seguri):
     chunkID = seguri.split("/")[-1]
-    return "wxox_%0.5d_%s.tmp.mpeg" % (n, chunkID)
+    return "wbor_%0.5d_%s.tmp.mpeg" % (n, chunkID)
 
 
 # Given list of downloaded segments `seglist`, concatenate them into a file
@@ -41,7 +37,7 @@ def concat(seglist, output, rm):
     print("creating index file for %d segments..." % len(seglist))
     # First build an index file
     indexfn = "{0}.index".format(output)
-    with open(indexfn, 'w') as fdout:
+    with open(indexfn, "w") as fdout:
         n = 0
         for seguri in seglist:
             n = n + 1
@@ -50,8 +46,23 @@ def concat(seglist, output, rm):
 
     # Then get ffmpeg to do the work:
     print("concatenating with ffmpeg...")
-    ffproc = subprocess.run(["ffmpeg", "-f", "concat", "-safe", "0", "-i", "{0}".format(indexfn),  "-c", "copy", output],
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    ffproc = subprocess.run(
+        [
+            "ffmpeg",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            "{0}".format(indexfn),
+            "-c",
+            "copy",
+            output,
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
     if ffproc.returncode != 0:
         print("ffmpeg run failed:")
         print(ffproc.stdout)
@@ -73,7 +84,7 @@ def download(seglist):
     for seguri in seglist:
         n = n + 1
         print("fetch seg %d/%d  %s" % (n, len(seglist), seguri))
-        chunkFile = segtofile(n, seguri)        
+        chunkFile = segtofile(n, seguri)
         if os.path.exists(chunkFile):
             print("--> using cached: {0}".format(chunkFile))
             continue
@@ -81,8 +92,7 @@ def download(seglist):
         if r.status_code != requests.codes.ok:
             print("  * request failed: {0}".format(r.status_code))
             return False
-        # print("  output to: {0}".format(chunkFile))
-        with open(chunkFile, 'wb') as fd:
+        with open(chunkFile, "wb") as fd:
             for chunk in r.iter_content(chunk_size=128):
                 fd.write(chunk)
     return True
@@ -91,12 +101,21 @@ def download(seglist):
 # Given string format of time from user, convert to a real datetime object in
 # UTC zone and return that.
 def makets(t):
-    localstamp  = datetime.strptime(t, "%m/%d/%Y %H:%M")
-    tt = localstamp.timetuple()
-    if not(tt.tm_min == 0 or tt.tm_min == 5):
-        print("ERROR: time must be multiple of 5 minutes")
+    try:
+        # Parse the given time string using 24-hour format
+        localstamp = datetime.strptime(t, "%m/%d/%Y %H:%M")
+
+        # Ensure the minutes are a multiple of 5
+        if localstamp.minute % 5 != 0:
+            print("ERROR: time must be a multiple of 5 minutes")
+            sys.exit(1)
+
+        # Convert to UTC timezone
+        return localstamp.astimezone(timezone.utc)
+
+    except ValueError as e:
+        print(f"ERROR: Invalid time format - {e}")
         sys.exit(1)
-    return localstamp.astimezone(timezone.utc)
 
 
 # use the indexes to get all segments necessary for the number of hours
@@ -104,8 +123,8 @@ def makets(t):
 def loadsegs(stamp, hours):
     curts = stamp
     segs = []
-    accum = 0 # seconds
-    required = hours * 60 * 60 # seconds
+    accum = 0  # seconds
+    required = hours * 60 * 60  # seconds
 
     while accum < required:
         showtime = curts.strftime("%Y%m%dT%H%M00Z")
@@ -114,16 +133,15 @@ def loadsegs(stamp, hours):
         if len(playlist.segments) == 0:
             print("no playlist data found")
             return []
-        total_secs = 0 # seconds from this playlist
+        total_secs = 0  # seconds from this playlist
         for seg in playlist.segments:
-            # print("    {0}  {1}s  {2}".format(showtime, seg.duration, seg.uri))
-            if (total_secs + seg.duration) > (30 * 60): # have we exeecded 30mins?
+            if (total_secs + seg.duration) > (30 * 60):  # have we exceeded 30mins?
                 break
             segs.append(seg.uri)
             total_secs = total_secs + seg.duration
             accum = accum + seg.duration
             if accum >= required:
-                # we have enough seconds.
+                # we have enough seconds
                 break
         if total_secs == 0:
             print("playlist has no content")
@@ -131,16 +149,26 @@ def loadsegs(stamp, hours):
         if accum >= required:
             break
         else:
-            print(" --> has {0} seconds (need {1} more)".format(total_secs, required - accum))
-        curts = curts + timedelta(minutes=30) # grab index starting at next half hour
+            print(
+                " --> has {0} seconds (need {1} more)".format(
+                    total_secs, required - accum
+                )
+            )
+        curts = curts + timedelta(minutes=30)  # grab index starting at next half hour
     return segs
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('date', metavar='MM/DD/YYYY', help='The show date')
-parser.add_argument('time', metavar="HH:MM", help='Starting time')
-parser.add_argument('count', type=int, metavar="N", help="hours (1 or 2)")
-parser.add_argument('--keep', dest='keep', action='store_const', const=True, help="keep intermediate files around")
+parser.add_argument("date", metavar="MM/DD/YYYY", help="The show date")
+parser.add_argument("time", metavar="HH:MM", help="Starting time")
+parser.add_argument("count", type=int, metavar="N", help="hours (1 or 2)")
+parser.add_argument(
+    "--keep",
+    dest="keep",
+    action="store_const",
+    const=True,
+    help="keep intermediate files around",
+)
 args = parser.parse_args()
 
 hours = args.count
@@ -154,16 +182,11 @@ utcs = makets(timestamp)
 showID = utcs.strftime("%Y%m%dT%H%M00Z")
 print("show start is {0}".format(showID))
 
-outfile = "wxox_{0}_{1}h.mp4".format(showID, hours)
+outfile = "wbor_{0}_{1}h.mp4".format(showID, hours)
 
 seglist = loadsegs(utcs, hours)
 if len(seglist) > 0:
     print("downloading {0} segments...".format(len(seglist)))
     if download(seglist):
-        if concat(seglist, outfile, not(args.keep)):
+        if concat(seglist, outfile, not (args.keep)):
             print("done!")
-
-
-
-
-
