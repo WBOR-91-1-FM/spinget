@@ -2,7 +2,7 @@
 
 # usage:
 #
-#  spinget.py 11/20/2021 10:00 1
+# python3 spinget.py 11/20/2021 10:00 1
 #     capture 1 hour show starting at 10:00am on November 20, 2021.
 #
 # Requires ffmpeg
@@ -18,23 +18,35 @@ import sys
 
 import m3u8
 import requests
+from dotenv import load_dotenv
+load_dotenv()
+
+STATION_SHORTCODE = os.getenv("STATION_SHORTCODE")
 
 INDEXURL = (
-    "https://ark3.spinitron.com/ark2/WBOR-{0}/index.m3u8"  # pass in a UTC timestamp
+    "https://ark3.spinitron.com/ark2/{0}-{1}/index.m3u8"
+    # Pass in the station shortcode and a UTC timestamp
 )
 
 
-# Pass (segment_number, segment_uri), returns a unique filename.
 def segtofile(n, seguri):
+    """
+    Given a segment URI, return a unique filename for the segment.
+    
+    Returns a string.
+    """
     chunkID = seguri.split("/")[-1]
-    return "wbor_%0.5d_%s.tmp.mpeg" % (n, chunkID)
+    return "%s_%0.5d_%s.tmp.mpeg" % (STATION_SHORTCODE, n, chunkID)
 
 
-# Given list of downloaded segments `seglist`, concatenate them into a file
-# named `output`. If `rm` is set True then also delete the downloaded segments
-# if concatenation succeeds.  Returns True on success.
 def concat(seglist, output, rm):
-    print("creating index file for %d segments..." % len(seglist))
+    """
+    Concatenate the segments in `seglist` into a single file named `output`.
+    If `rm` is set True then also delete the downloaded segments if concatenation succeeds.
+    
+    Returns True on success.
+    """
+    print("Creating index file for %d segments..." % len(seglist))
     # First build an index file
     indexfn = "{0}.index".format(output)
     with open(indexfn, "w") as fdout:
@@ -45,7 +57,7 @@ def concat(seglist, output, rm):
             fdout.write("file {0}\n".format(fn))
 
     # Then get ffmpeg to do the work:
-    print("concatenating with ffmpeg...")
+    print("Concatenating with ffmpeg...")
     ffproc = subprocess.run(
         [
             "ffmpeg",
@@ -64,11 +76,11 @@ def concat(seglist, output, rm):
         text=True,
     )
     if ffproc.returncode != 0:
-        print("ffmpeg run failed:")
+        print("ffmpeg run failed! Output:")
         print(ffproc.stdout)
         return False
     if rm:
-        print("cleaning up")
+        print("Cleaning up segment files...")
         n = 0
         for seguri in seglist:
             n = n + 1
@@ -77,20 +89,23 @@ def concat(seglist, output, rm):
     return True
 
 
-# Takes a list of segment URIs and dowloads them one at a time.
-# Return True on success.
 def download(seglist):
+    """
+    Download all segments in `seglist` to the current directory.
+    
+    Returns True on success.
+    """
     n = 0
     for seguri in seglist:
         n = n + 1
-        print("fetch seg %d/%d  %s" % (n, len(seglist), seguri))
+        print("Fetching segment %d/%d from %s" % (n, len(seglist), seguri))
         chunkFile = segtofile(n, seguri)
         if os.path.exists(chunkFile):
             print("--> using cached: {0}".format(chunkFile))
             continue
         r = requests.get(seguri, stream=True)
         if r.status_code != requests.codes.ok:
-            print("  * request failed: {0}".format(r.status_code))
+            print("  * Request failed: {0}".format(r.status_code))
             return False
         with open(chunkFile, "wb") as fd:
             for chunk in r.iter_content(chunk_size=128):
@@ -98,9 +113,12 @@ def download(seglist):
     return True
 
 
-# Given string format of time from user, convert to a real datetime object in
-# UTC zone and return that.
 def makets(t):
+    """
+    Parse the given time string and return a datetime object in UTC timezone.
+    
+    Returns a datetime object in UTC timezone.
+    """
     try:
         # Parse the given time string using 24-hour format
         localstamp = datetime.strptime(t, "%m/%d/%Y %H:%M")
@@ -118,9 +136,12 @@ def makets(t):
         sys.exit(1)
 
 
-# use the indexes to get all segments necessary for the number of hours
-# requestd. Returns a list of segment URIs
 def loadsegs(stamp, hours):
+    """
+    Load the segments for the given timestamp and number of hours.
+    
+    Returns a list of segment URIs.
+    """
     curts = stamp
     segs = []
     accum = 0  # seconds
@@ -128,10 +149,10 @@ def loadsegs(stamp, hours):
 
     while accum < required:
         showtime = curts.strftime("%Y%m%dT%H%M00Z")
-        print("fetching index for {0}".format(showtime))
-        playlist = m3u8.load(INDEXURL.format(showtime))
+        print("Fetching index for {0}".format(showtime))
+        playlist = m3u8.load(INDEXURL.format(STATION_SHORTCODE, showtime))
         if len(playlist.segments) == 0:
-            print("no playlist data found")
+            print("No playlist data found!")
             return []
         total_secs = 0  # seconds from this playlist
         for seg in playlist.segments:
@@ -144,7 +165,7 @@ def loadsegs(stamp, hours):
                 # we have enough seconds
                 break
         if total_secs == 0:
-            print("playlist has no content")
+            print("Playlist has no content!")
             return []
         if accum >= required:
             break
@@ -158,6 +179,7 @@ def loadsegs(stamp, hours):
     return segs
 
 
+# Parse command line arguments
 parser = argparse.ArgumentParser()
 parser.add_argument("date", metavar="MM/DD/YYYY", help="The show date")
 parser.add_argument("time", metavar="HH:MM", help="Starting time")
@@ -171,22 +193,25 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
+# Validate the hours argument
 hours = args.count
 if hours > 2 or hours < 1:
-    print("hours must be 1 or 2")
+    print("Hours must be 1 or 2")
     sys.exit(1)
 
+# Parse the date and time arguments
 timestamp = "{0} {1}".format(args.date, args.time)
 utcs = makets(timestamp)
 
+# Generate the show ID
 showID = utcs.strftime("%Y%m%dT%H%M00Z")
-print("show start is {0}".format(showID))
+print("Show start is {0}".format(showID))
 
-outfile = "wbor_{0}_{1}h.mp4".format(showID, hours)
+outfile = "{0}_{1}_{2}h.mp4".format(STATION_SHORTCODE, showID, hours)
 
 seglist = loadsegs(utcs, hours)
 if len(seglist) > 0:
-    print("downloading {0} segments...".format(len(seglist)))
+    print("Downloading {0} segments...".format(len(seglist)))
     if download(seglist):
         if concat(seglist, outfile, not (args.keep)):
-            print("done!")
+            print("Done! The file has been output as {0} in the current working directory".format(outfile))
