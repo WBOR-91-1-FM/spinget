@@ -7,7 +7,7 @@ Download show audio from Spinitron's ARK player.
 
 ## How to run
 
-1. Make sure you have ffmpeg installed on your machine:
+1. Make sure you have ffmpeg installed on your machine. You can download ffmpeg easily using [Homebrew](https://brew.sh) in your command line:
 
     ```zsh
     brew install ffmpeg
@@ -19,22 +19,26 @@ Download show audio from Spinitron's ARK player.
     pip3 install requests m3u8
     ```
 
-    alternatively,
+    alternatively you can run the following from the project directory,
 
     ```zsh
     pip3 install -r requirements.txt
     ```
 
-3. Get show audio, eg:
+    > [!NOTE]
+    > If you use Homebrew to manage your Python runtime installations, you will need to first initialize and active a virtual environment (venv).
+
+3. Get show audio:
 
     ```zsh
     ./spinget.py 11/04/2021 00:00 1
     ```
 
 The above invocation gets `1` hour of audio starting at midnight (`00:00`) on
-November 4th, 2021 (`11/04/2021`).
+October 4th, 2024 (`10/04/2024`).
 
 ## Issues
 
 - This probably will not work properly across a date boundry.
-- This generates intermediate files in the working directory.
+- This generates intermediate files in the working directory (though they are purged upon completion).
+- Fails if a user tries to fetch from a date greater than two weeks old.
