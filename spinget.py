@@ -44,17 +44,17 @@ def segtofile(n, seguri):
     return f"{STATION_SHORTCODE}_{n:05d}_{chunk_id}.tmp.mpeg"
 
 
-def concat(seglist, output, rm):
+def concat(segment_list, output, rm):
     """
-    Concatenate the segments in `seglist` into a single file named `output`.
+    Concatenate the segments in `segment_list` into a single file named `output`.
     If `rm` is set True then also delete the downloaded segments if concatenation succeeds.
     
     Returns True on success.
     """
-    print(f"Creating index file for {len(seglist)} segments...")
+    print(f"Creating index file for {len(segment_list)} segments...")
     indexfn = f"{output}.index"
     with open(indexfn, "w", encoding="utf-8") as fdout:
-        for n, seguri in enumerate(seglist, start=1):
+        for n, seguri in enumerate(segment_list, start=1):
             fn = segtofile(n, seguri)
             fdout.write(f"file {fn}\n")
 
@@ -76,21 +76,21 @@ def concat(seglist, output, rm):
 
     if rm:
         print("Cleaning up segment files...")
-        for n, seguri in enumerate(seglist, start=1):
+        for n, seguri in enumerate(segment_list, start=1):
             os.remove(segtofile(n, seguri))
         os.remove(indexfn)
 
     return True
 
 
-def download(seglist):
+def download(segment_list):
     """
-    Download all segments in `seglist` to the current directory.
+    Download all segments in `segment_list` to the current directory.
     
     Returns True on success.
     """
-    for n, seguri in enumerate(seglist, start=1):
-        print(f"Fetching segment {n}/{len(seglist)} from {seguri}")
+    for n, seguri in enumerate(segment_list, start=1):
+        print(f"Fetching segment {n}/{len(segment_list)} from {seguri}")
         chunk_file = segtofile(n, seguri)
         if os.path.exists(chunk_file):
             print(f"--> using cached: {chunk_file}")
@@ -125,7 +125,7 @@ def makets(t):
         sys.exit(1)
 
 
-def loadsegs(stamp, hours):
+def loadsegs(stamp, duration_hours):
     """
     Load the segments for the given timestamp and number of hours.
     
@@ -134,7 +134,7 @@ def loadsegs(stamp, hours):
     curts = stamp
     segs = []
     accum = 0  # seconds
-    required = hours * 60 * 60  # seconds
+    required = duration_hours * 60 * 60  # seconds
 
     while accum < required:
         showtime = curts.strftime("%Y%m%dT%H%M00Z")
@@ -157,8 +157,7 @@ def loadsegs(stamp, hours):
             return []
         if accum >= required:
             break
-        else:
-            print(f" --> has {total_secs} seconds (need {required - accum} more)")
+        print(f" --> has {total_secs} seconds (need {required - accum} more)")
         curts += timedelta(minutes=30)
 
     return segs
@@ -181,18 +180,18 @@ if hours > 2 or hours < 1:
     sys.exit(1)
 
 # Parse the date and time arguments
-timestamp = f"{args.date} {args.time}"
-utcs = makets(timestamp)
+TIMESTAMP = f"{args.date} {args.time}"
+utcs = makets(TIMESTAMP)
 
 # Generate the show ID
 showID = utcs.strftime("%Y%m%dT%H%M00Z")
 print(f"Show start is {showID}")
 
-outfile = f"{STATION_SHORTCODE}_{showID}_{hours}h.mp4"
+OUTFILE = f"{STATION_SHORTCODE}_{showID}_{hours}h.mp4"
 
 seglist = loadsegs(utcs, hours)
 if seglist:
     print(f"Downloading {len(seglist)} segments...")
     if download(seglist):
-        if concat(seglist, outfile, not args.keep):
-            print(f"Done! The file has been output as {outfile} in the current working directory")
+        if concat(seglist, OUTFILE, not args.keep):
+            print(f"Done! The file has been output as {OUTFILE} in the current working directory")
