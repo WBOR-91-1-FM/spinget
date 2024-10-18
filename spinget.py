@@ -22,6 +22,8 @@ import os
 import subprocess
 import sys
 
+import concurrent.futures
+
 import m3u8
 import requests
 from dotenv import load_dotenv
@@ -83,26 +85,54 @@ def concat(segment_list, output, rm):
     return True
 
 
-def download(segment_list):
+def download_segment(seguri, n, total_segments):
     """
-    Download all segments in `segment_list` to the current directory.
+    Download a single segment given its URI.
     
     Returns True on success.
     """
-    for n, seguri in enumerate(segment_list, start=1):
-        print(f"Fetching segment {n}/{len(segment_list)} from {seguri}")
-        chunk_file = segtofile(n, seguri)
-        if os.path.exists(chunk_file):
-            print(f"--> using cached: {chunk_file}")
-            continue
-        r = requests.get(seguri, stream=True)
-        if r.status_code != requests.codes.ok:
+    print(f"Fetching segment {n}/{total_segments} from {seguri}")
+    chunk_file = segtofile(n, seguri)
+    if os.path.exists(chunk_file):
+        print(f"--> using cached: {chunk_file}")
+        return True
+    
+    try:
+        r = requests.get(seguri, stream=True, timeout=(5, 30))
+        if r.status_code != 200:
             print(f"  * Request failed: {r.status_code}")
             return False
         with open(chunk_file, "wb") as fd:
             for chunk in r.iter_content(chunk_size=128):
                 fd.write(chunk)
-    return True
+        return True
+    except requests.exceptions.Timeout:
+        print(f"  * Request timed out for segment {n}")
+        return False
+    except requests.exceptions.RequestException as e:
+        print(f"  * Failed to download segment {n}: {e}")
+        return False
+
+
+def download(segment_list):
+    """
+    Download all segments in `segment_list` using parallel execution.
+    
+    Returns True on success.
+    """
+    total_segments = len(segment_list)
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        # Create a list of futures for each segment download
+        futures = [
+            executor.submit(download_segment, seguri, n, total_segments)
+            for n, seguri in enumerate(segment_list, start=1)
+        ]
+        
+        # Wait for all downloads to complete
+        results = [future.result() for future in concurrent.futures.as_completed(futures)]
+        
+    # Return True only if all downloads were successful
+    return all(results)
 
 
 def makets(t):
