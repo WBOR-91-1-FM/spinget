@@ -144,6 +144,12 @@ def makets(t):
         if localstamp.minute % 5 != 0:
             print("ERROR: time must be a multiple of 5 minutes")
             sys.exit(1)
+        # Check if the input date is more than two weeks ago
+        now = datetime.now()
+        two_weeks_ago = now - timedelta(weeks=2)
+        if localstamp < two_weeks_ago:
+            print("ERROR: Provided date is greater than two weeks ago.")
+            sys.exit(1)
 
         return localstamp.astimezone(timezone.utc)
 
@@ -190,6 +196,19 @@ def loadsegs(stamp, duration_hours):
     return segs
 
 
+def generate_new_filename(output):
+    """
+    Generate a new filename by appending a number if the file already exists.
+    """
+    base, ext = os.path.splitext(output)
+    counter = 1
+    new_output = f"{base}_{counter}{ext}"
+    while os.path.exists(new_output):
+        counter += 1
+        new_output = f"{base}_{counter}{ext}"
+    return new_output
+
+
 # Parse command line arguments
 parser = argparse.ArgumentParser()
 parser.add_argument("date", metavar="MM/DD/YYYY", help="The show date")
@@ -215,6 +234,11 @@ showID = utcs.strftime("%Y%m%dT%H%M00Z")
 print(f"Show start is {showID}")
 
 OUTFILE = f"{STATION_SHORTCODE}_{showID}_{hours}h.mp4"
+
+# Automatically generate a new filename if the output file already exists
+if os.path.exists(OUTFILE):
+    OUTFILE = generate_new_filename(OUTFILE)
+    print(f"File already exists. Using new filename: {OUTFILE}")
 
 seglist = loadsegs(utcs, hours)
 if seglist:

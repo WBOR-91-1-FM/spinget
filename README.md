@@ -41,4 +41,3 @@ October 4th, 2024 (`10/04/2024`).
 
 - This probably will not work properly across a date boundry.
 - This generates intermediate files in the working directory (though they are purged upon completion).
-- Fails if a user tries to fetch from a date greater than two weeks old.
