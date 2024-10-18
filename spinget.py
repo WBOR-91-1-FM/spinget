@@ -95,8 +95,7 @@ def download_segment(seguri, n, total_segments):
     chunk_file = segtofile(n, seguri)
     if os.path.exists(chunk_file):
         print(f"--> using cached: {chunk_file}")
-        return True
-    
+        return True    
     try:
         r = requests.get(seguri, stream=True, timeout=(5, 30))
         if r.status_code != 200:
@@ -127,10 +126,8 @@ def download(segment_list):
             executor.submit(download_segment, seguri, n, total_segments)
             for n, seguri in enumerate(segment_list, start=1)
         ]
-        
         # Wait for all downloads to complete
         results = [future.result() for future in concurrent.futures.as_completed(futures)]
-        
     # Return True only if all downloads were successful
     return all(results)
 
