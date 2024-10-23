@@ -21,6 +21,7 @@ from datetime import datetime, timezone, timedelta
 import os
 import subprocess
 import sys
+from urllib.error import HTTPError
 
 import concurrent.futures
 
@@ -172,9 +173,16 @@ def loadsegs(stamp, duration_hours):
     while accum < required:
         showtime = curts.strftime("%Y%m%dT%H%M00Z")
         print(f"Fetching index for {showtime}")
-        playlist = m3u8.load(INDEXURL.format(STATION_SHORTCODE, showtime))
-        if len(playlist.segments) == 0:
-            print("No playlist data found!")
+        try:
+            playlist = m3u8.load(INDEXURL.format(STATION_SHORTCODE, showtime))
+            if len(playlist.segments) == 0:
+                print("No playlist data found!")
+                return []
+        except HTTPError as e:
+            if e.code == 404:
+                print(f"404 Error: Playlist for {showtime} not found. Try waiting an hour...")
+                return []
+            print(f"HTTPError occurred: {e}")
             return []
         total_secs = 0
         for seg in playlist.segments:
