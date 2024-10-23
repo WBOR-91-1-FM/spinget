@@ -25,8 +25,8 @@ Download show audio from Spinitron's ARK player.
     pip3 install -r requirements.txt
     ```
 
-    > [!NOTE]
-    > If you use Homebrew to manage your Python runtime installations, you will need to first initialize and active a virtual environment (venv).
+> [!NOTE]
+> If you use Homebrew to manage your Python runtime installations, you will need to first initialize and active a virtual environment (venv).
 
 3. Get show audio:
 
