@@ -25,8 +25,8 @@ Download show audio from Spinitron's ARK player.
     pip3 install -r requirements.txt
     ```
 
-> [!NOTE]
-> If you use Homebrew to manage your Python runtime installations, you will need to first initialize and active a virtual environment (venv).
+    > [!NOTE]
+    > If you use Homebrew to manage your Python runtime installations, you will need to first initialize and active a virtual environment (venv).
 
 3. Get show audio:
 
@@ -34,8 +34,16 @@ Download show audio from Spinitron's ARK player.
     ./spinget.py 11/04/2021 00:00 1
     ```
 
-The above invocation gets `1` hour of audio starting at midnight (`00:00`) on
-October 4th, 2024 (`10/04/2024`).
+    The above invocation gets `1` hour of audio starting at midnight (`00:00`) on
+    October 4th, 2024 (`10/04/2024`).
+
+    Optionally, provided a `.csv` containing the dates, times, and durations of multiple shows you'd like to download, you can run:
+
+    ```zsh
+    ./bulk_download.py shows-example.csv
+    ```
+
+    where `shows-example.csv` follows the same format as in the orignal command, outlined in the file included in thsi repository.
 
 ## Issues
 

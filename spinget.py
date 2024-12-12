@@ -28,20 +28,27 @@ import concurrent.futures
 import m3u8
 import requests
 from dotenv import load_dotenv
+
 load_dotenv()
 
 STATION_SHORTCODE = os.getenv("STATION_SHORTCODE")
 
-INDEXURL = (
+INDEX_URL = (
     "https://ark3.spinitron.com/ark2/{0}-{1}/index.m3u8"
     # Pass in the station shortcode and a UTC timestamp
 )
 
-def segtofile(n, seguri):
+
+def seg_to_file(n, seguri):
     """
-    Given a segment URI, return a unique filename for the segment.
-    
-    Returns a string.
+    Given a segment URI, return a unique file name for the segment.
+
+    Parameters:
+    - n: The segment number.
+    - seguri: The segment URI.
+
+    Returns:
+    - A file name string.
     """
     chunk_id = seguri.split("/")[-1]
     return f"{STATION_SHORTCODE}_{n:05d}_{chunk_id}.tmp.mpeg"
@@ -51,25 +58,46 @@ def concat(segment_list, output, rm):
     """
     Concatenate the segments in `segment_list` into a single file named `output`.
     If `rm` is set True then also delete the downloaded segments if concatenation succeeds.
-    
-    Returns True on success.
+
+    Parameters:
+    - segment_list: A list of segment URIs.
+    - output: The output file name.
+    - rm: Whether to remove the downloaded segments after concatenation.
+
+    Returns:
+    - True on success.
     """
     print(f"Creating index file for {len(segment_list)} segments...")
-    indexfn = f"{output}.index"
-    with open(indexfn, "w", encoding="utf-8") as fdout:
+    index_file = f"{output}.index"
+    with open(index_file, "w", encoding="utf-8") as fdout:
         for n, seguri in enumerate(segment_list, start=1):
-            fn = segtofile(n, seguri)
-            fdout.write(f"file {fn}\n")
+            file_name = seg_to_file(n, seguri)
+            fdout.write(f"file {file_name}\n")
 
     print("Concatenating with ffmpeg...")
+    # Arguments for ffmpeg:
+    # -f concat: Use the concat demuxer
+    # -safe 0: Allow unsafe file names
+    # -i index_file: Read the list of files to concatenate from the index file
+    # -c copy: Copy the streams directly without re-encoding
+    # output: The output file name
     ffproc = subprocess.run(
         [
-            "ffmpeg", "-f", "concat", "-safe", "0", "-i", indexfn, "-c", "copy", output,
+            "ffmpeg",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            index_file,
+            "-c",
+            "copy",
+            output,
         ],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
-        check=True
+        check=True,
     )
 
     if ffproc.returncode != 0:
@@ -80,8 +108,8 @@ def concat(segment_list, output, rm):
     if rm:
         print("Cleaning up segment files...")
         for n, seguri in enumerate(segment_list, start=1):
-            os.remove(segtofile(n, seguri))
-        os.remove(indexfn)
+            os.remove(seg_to_file(n, seguri))
+        os.remove(index_file)
 
     return True
 
@@ -89,13 +117,19 @@ def concat(segment_list, output, rm):
 def download_segment(seguri, n, total_segments):
     """
     Download a single segment given its URI.
-    
-    Returns True on success.
+
+    Parameters:
+    - seguri: The segment URI.
+    - n: The segment number.
+    - total_segments: The total number of segments.
+
+    Returns:
+    - True on success.
     """
     print(f"Fetching segment {n}/{total_segments} from {seguri}")
-    chunk_file = segtofile(n, seguri)
+    chunk_file = seg_to_file(n, seguri)
     if os.path.exists(chunk_file):
-        print(f"--> using cached: {chunk_file}")
+        print(f"--> used cached: {chunk_file}")
         return True
     try:
         r = requests.get(seguri, stream=True, timeout=(5, 30))
@@ -117,8 +151,12 @@ def download_segment(seguri, n, total_segments):
 def download(segment_list):
     """
     Download all segments in `segment_list` using parallel execution.
-    
-    Returns True on success.
+
+    Parameters:
+    - segment_list: A list of segment URIs.
+
+    Returns:
+    - True if all downloads were successful.
     """
     total_segments = len(segment_list)
     with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -128,23 +166,34 @@ def download(segment_list):
             for n, seguri in enumerate(segment_list, start=1)
         ]
         # Wait for all downloads to complete
-        results = [future.result() for future in concurrent.futures.as_completed(futures)]
+        results = [
+            future.result() for future in concurrent.futures.as_completed(futures)
+        ]
     # Return True only if all downloads were successful
     return all(results)
 
 
-def makets(t):
+def make_ts(t):
     """
     Parse the given time string and return a datetime object in UTC timezone.
-    
-    Returns a datetime object in UTC timezone.
+
+    UTC is necessary for retrieving from the Spinitron server.
+
+    Parameters:
+    - t: A time string in the format "MM/DD/YYYY HH:MM".
+
+    Returns:
+    - A datetime object in UTC timezone.
     """
     try:
+        # Parse the input time string
         localstamp = datetime.strptime(t, "%m/%d/%Y %H:%M")
 
+        # TODO: check if we get results from the server for the given time?
         if localstamp.minute % 5 != 0:
             print("ERROR: time must be a multiple of 5 minutes")
             sys.exit(1)
+
         # Check if the input date is more than two weeks ago
         now = datetime.now()
         two_weeks_ago = now - timedelta(weeks=2)
@@ -153,37 +202,45 @@ def makets(t):
             sys.exit(1)
 
         return localstamp.astimezone(timezone.utc)
-
     except ValueError as e:
         print(f"ERROR: Invalid time format - {e}")
         sys.exit(1)
 
 
-def loadsegs(stamp, duration_hours):
+def load_segs(stamp, duration_hours):
     """
     Load the segments for the given timestamp and number of hours.
-    
-    Returns a list of segment URIs.
+
+    Parameters:
+    - stamp: A datetime object in UTC timezone.
+    - duration_hours: The number of hours to capture.
+
+    Returns:
+    - A list of segment URIs.
     """
-    curts = stamp
+    current_ts = stamp
     segs = []
     accum = 0  # seconds
     required = duration_hours * 60 * 60  # seconds
 
+    # Fetch segments until we have enough content
     while accum < required:
-        showtime = curts.strftime("%Y%m%dT%H%M00Z")
+        showtime = current_ts.strftime("%Y%m%dT%H%M00Z")
         print(f"Fetching index for {showtime}")
         try:
-            playlist = m3u8.load(INDEXURL.format(STATION_SHORTCODE, showtime))
+            playlist = m3u8.load(INDEX_URL.format(STATION_SHORTCODE, showtime))
             if len(playlist.segments) == 0:
                 print("No playlist data found!")
                 return []
         except HTTPError as e:
             if e.code == 404:
-                print(f"404 Error: Playlist for {showtime} not found. Try waiting an hour...")
+                print(
+                    f"404 Error: Playlist for {showtime} not found. Try waiting an hour..."
+                )
                 return []
             print(f"HTTPError occurred: {e}")
             return []
+
         total_secs = 0
         for seg in playlist.segments:
             if total_secs + seg.duration > 30 * 60:
@@ -193,27 +250,37 @@ def loadsegs(stamp, duration_hours):
             accum += seg.duration
             if accum >= required:
                 break
+
         if total_secs == 0:
             print("Playlist has no content!")
             return []
         if accum >= required:
             break
         print(f" --> has {total_secs} seconds (need {required - accum} more)")
-        curts += timedelta(minutes=30)
+        current_ts += timedelta(minutes=30)
 
     return segs
 
 
-def generate_new_filename(output):
+def generate_new_file_name(output):
     """
-    Generate a new filename by appending a number if the file already exists.
+    Generate a new file name by appending a number if the file already exists.
+
+    Parameters:
+    - output: The original file name.
+
+    Returns:
+    - A new file name string with a number appended.
     """
-    base, ext = os.path.splitext(output)
+    base, ext = os.path.splitext(output)  # Split the file name and extension
     counter = 1
     new_output = f"{base}_{counter}{ext}"
+
+    # Increment the counter until we find a file name that doesn't exist
     while os.path.exists(new_output):
         counter += 1
         new_output = f"{base}_{counter}{ext}"
+
     return new_output
 
 
@@ -223,11 +290,16 @@ parser.add_argument("date", metavar="MM/DD/YYYY", help="The show date")
 parser.add_argument("time", metavar="HH:MM", help="Starting time")
 parser.add_argument("count", type=int, metavar="N", help="hours (1 or 2)")
 parser.add_argument(
-    "--keep", dest="keep", action="store_const", const=True, help="keep intermediate files around",
+    "--keep",
+    dest="keep",
+    action="store_const",
+    const=True,
+    help="keep intermediate files around for debugging",
 )
 args = parser.parse_args()
 
 # Validate the hours argument
+# TODO: check if this is needed?
 hours = args.count
 if hours > 2 or hours < 1:
     print("Hours must be 1 or 2")
@@ -235,22 +307,24 @@ if hours > 2 or hours < 1:
 
 # Parse the date and time arguments
 TIMESTAMP = f"{args.date} {args.time}"
-utcs = makets(TIMESTAMP)
+utc_ts = make_ts(TIMESTAMP)
 
 # Generate the show ID
-showID = utcs.strftime("%Y%m%dT%H%M00Z")
-print(f"Show start is {showID}")
+show_id = utc_ts.astimezone(timezone(timedelta(hours=-5))).strftime("%Y-%m-%d-%H-%M")
+print(f"Show start is {show_id}")
 
-OUTFILE = f"{STATION_SHORTCODE}_{showID}_{hours}h.mp4"
+OUTFILE = f"{STATION_SHORTCODE}_{show_id}_{hours}h.mp4"
 
-# Automatically generate a new filename if the output file already exists
+# Automatically generate a new file name if the output file already exists
 if os.path.exists(OUTFILE):
-    OUTFILE = generate_new_filename(OUTFILE)
-    print(f"File already exists. Using new filename: {OUTFILE}")
+    OUTFILE = generate_new_file_name(OUTFILE)
+    print(f"File already exists. Using new file name: {OUTFILE}")
 
-seglist = loadsegs(utcs, hours)
+seglist = load_segs(utc_ts, hours)
 if seglist:
     print(f"Downloading {len(seglist)} segments...")
     if download(seglist):
         if concat(seglist, OUTFILE, not args.keep):
-            print(f"Done! The file has been output as {OUTFILE} in the current working directory")
+            print(
+                f"Done! The file has been output as {OUTFILE} in the current working directory"
+            )
