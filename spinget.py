@@ -194,8 +194,14 @@ def make_ts(t):
             print("ERROR: time must be a multiple of 5 minutes")
             sys.exit(1)
 
-        # Check if the input date is more than two weeks ago
         now = datetime.now()
+
+        # Reject future dates
+        if localstamp > now:
+            print("ERROR: Provided date is in the future. Not allowed.")
+            sys.exit(1)
+
+        # Check if the input date is more than two weeks ago
         two_weeks_ago = now - timedelta(weeks=2)
         if localstamp < two_weeks_ago:
             print("ERROR: Provided date is greater than two weeks ago.")
