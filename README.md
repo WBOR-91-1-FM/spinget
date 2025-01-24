@@ -49,7 +49,3 @@ Download show audio from Spinitron's ARK player.
 
 - This probably will not work properly across a date boundry.
 - This generates intermediate files in the working directory (though they are purged upon completion).
-
-## TODO
-
-- Add optional param to use show name for file naming
