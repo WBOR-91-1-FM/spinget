@@ -27,6 +27,7 @@ import concurrent.futures
 
 import m3u8
 import requests
+from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -305,7 +306,6 @@ parser.add_argument(
 args = parser.parse_args()
 
 # Validate the hours argument
-# TODO: check if this is needed?
 hours = args.count
 if hours > 2 or hours < 1:
     print("Hours must be 1 or 2")
@@ -315,8 +315,8 @@ if hours > 2 or hours < 1:
 TIMESTAMP = f"{args.date} {args.time}"
 utc_ts = make_ts(TIMESTAMP)
 
-# Generate the show ID
-show_id = utc_ts.astimezone(timezone(timedelta(hours=-5))).strftime("%Y-%m-%d-%H-%M")
+# Generate the show ID, which is the timestamp in the America/New_York timezone
+show_id = utc_ts.astimezone(ZoneInfo("America/New_York")).strftime("%Y-%m-%d-%H-%M")
 print(f"Show start is {show_id}")
 
 OUTFILE = f"{STATION_SHORTCODE}_{show_id}_{hours}h.mp4"
