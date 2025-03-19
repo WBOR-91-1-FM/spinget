@@ -10,7 +10,7 @@ Example:
     python3 spinget.py 11/20/2021 10:00 1
     Capture 1 hour show starting at 10:00am on November 20, 2021.
 
-Requires ffmpeg and appropriate Python packages (m3u8, requests, dotenv).
+Requires ffmpeg and appropriate Python packages (m3u8, requests).
 
 Version 2.1 by Mathias for WXOX
 Version 2.2 by Mason Daugherty for WBOR
@@ -25,20 +25,15 @@ from urllib.error import HTTPError
 
 import concurrent.futures
 
+import json
 import m3u8
 import requests
 from zoneinfo import ZoneInfo
-from dotenv import load_dotenv
 
-load_dotenv()
+station_config = {}
 
-STATION_SHORTCODE = os.getenv("STATION_SHORTCODE")
-
-INDEX_URL = (
-    "https://ark3.spinitron.com/ark2/{0}-{1}/index.m3u8"
-    # Pass in the station shortcode and a UTC timestamp
-)
-
+def get_index_url(timestamp):
+    return station_config["index_url_pattern"].format(shortcode=station_config["shortcode"], timestamp=timestamp)
 
 def seg_to_file(n, seguri):
     """
@@ -52,7 +47,7 @@ def seg_to_file(n, seguri):
     - A file name string.
     """
     chunk_id = seguri.split("/")[-1]
-    return f"{STATION_SHORTCODE}_{n:05d}_{chunk_id}.tmp.mpeg"
+    return f"{station_config['shortcode']}_{n:05d}_{chunk_id}.tmp.mpeg"
 
 
 def concat(segment_list, output, rm):
@@ -190,7 +185,6 @@ def make_ts(t):
         # Parse the input time string
         localstamp = datetime.strptime(t, "%m/%d/%Y %H:%M")
 
-        # TODO: check if we get results from the server for the given time?
         if localstamp.minute % 5 != 0:
             print("ERROR: time must be a multiple of 5 minutes")
             sys.exit(1)
@@ -235,7 +229,7 @@ def load_segs(stamp, duration_hours):
         showtime = current_ts.strftime("%Y%m%dT%H%M00Z")
         print(f"Fetching index for {showtime}")
         try:
-            playlist = m3u8.load(INDEX_URL.format(STATION_SHORTCODE, showtime))
+            playlist = m3u8.load(get_index_url(showtime))
             if len(playlist.segments) == 0:
                 print("No playlist data found!")
                 return []
@@ -296,6 +290,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("date", metavar="MM/DD/YYYY", help="The show date")
 parser.add_argument("time", metavar="HH:MM", help="Starting time")
 parser.add_argument("count", type=int, metavar="N", help="hours (1 or 2)")
+parser.add_argument("--station", default="default", help="Station code to use.")
 parser.add_argument(
     "--keep",
     dest="keep",
@@ -304,6 +299,14 @@ parser.add_argument(
     help="keep intermediate files around for debugging",
 )
 args = parser.parse_args()
+
+with open("stations.json") as f:
+    stations = json.load(f)
+
+if args.station not in stations:
+    print(f"ERROR: Station '{args.station}' not found in configuration.")
+    sys.exit(1)
+station_config = stations[args.station]
 
 # Validate the hours argument
 hours = args.count
@@ -316,10 +319,10 @@ TIMESTAMP = f"{args.date} {args.time}"
 utc_ts = make_ts(TIMESTAMP)
 
 # Generate the show ID, which is the timestamp in the America/New_York timezone
-show_id = utc_ts.astimezone(ZoneInfo("America/New_York")).strftime("%Y-%m-%d-%H-%M")
+show_id = utc_ts.astimezone(ZoneInfo(station_config["timezone"])).strftime("%Y-%m-%d-%H-%M")
 print(f"Show start is {show_id}")
 
-OUTFILE = f"{STATION_SHORTCODE}_{show_id}_{hours}h.mp4"
+OUTFILE = f"{station_config['shortcode']}_{show_id}_{hours}h.mp4"
 
 # Automatically generate a new file name if the output file already exists
 if os.path.exists(OUTFILE):

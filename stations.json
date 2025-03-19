@@ -1,0 +1,12 @@
+{
+  "default": {
+    "shortcode": "WBOR",
+    "timezone": "America/New_York",
+    "index_url_pattern": "https://ark3.spinitron.com/ark2/{shortcode}-{timestamp}/index.m3u8"
+  },
+  "wxyz": {
+    "shortcode": "WXYZ",
+    "timezone": "America/Los_Angeles",
+    "index_url_pattern": "https://ark3.spinitron.com/ark2/{shortcode}-{timestamp}/index.m3u8"
+  }
+}
