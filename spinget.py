@@ -26,9 +26,9 @@ from urllib.error import HTTPError
 import concurrent.futures
 
 import json
+from zoneinfo import ZoneInfo
 import m3u8
 import requests
-from zoneinfo import ZoneInfo
 
 station_config = {}
 
