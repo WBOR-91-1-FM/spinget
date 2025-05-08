@@ -16,7 +16,7 @@ Download show audio from Spinitron's ARK player.
 2. Initialize a virtual environment and install Python pre-requisites:
 
     ```zsh
-    python -m venv venv
+    python3 -m venv venv
     source venv/bin/activate
     ```
 
